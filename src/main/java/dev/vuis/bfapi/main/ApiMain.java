@@ -25,6 +25,8 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import it.unimi.dsi.fastutil.objects.ObjectIntImmutablePair;
 import it.unimi.dsi.fastutil.objects.ObjectList;
+
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -78,9 +80,7 @@ public final class ApiMain {
 		if (MS_CLIENT_SECRET_FILE != null) {
 			msClientSecret = Files.readString(Path.of(MS_CLIENT_SECRET_FILE));
 		}
-		Set<UUID> ucdPlayers = Arrays.stream(Files.readString(Path.of(BF_PLAYER_LIST_FILE)).split("\n"))
-			.map(UUID::fromString).collect(Collectors.toSet());
-
+		Set<UUID> ucdPlayers = loadUcdPlayers();
 		log.info("starting HTTP server");
 
 		CompletableFuture<String> msCodeFuture = null;
@@ -263,4 +263,14 @@ public final class ApiMain {
 
 		friendScrapeFuture.complete(packet.friends());
 	}
+	private static Set<UUID> loadUcdPlayers() {
+    try {
+        return Arrays.stream(Files.readString(Path.of(BF_PLAYER_LIST_FILE)).split("\n"))
+            .map(UUID::fromString)
+            .collect(Collectors.toSet());
+    } catch (IOException e) {
+        System.err.println("Could not read file, using empty set: " + e.getMessage());
+        return new HashSet<>();
+    }
+}
 }
