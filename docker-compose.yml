@@ -1,0 +1,17 @@
+services:
+  bfapi:
+    build: .
+    volumes:
+      - ./players.txt:/opt/bfapi/players.txt:ro
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    stdin_open: true
+    tty: true        
+    networks:
+      - bfapi-network
+
+networks:
+  bfapi-network:

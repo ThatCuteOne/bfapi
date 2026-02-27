@@ -20,6 +20,7 @@ import com.boehmod.bflib.cloud.packet.primitives.EncryptionReadyPacket;
 import dev.vuis.bfapi.auth.MinecraftAuth;
 import dev.vuis.bfapi.cloud.cache.BfDataCache;
 import dev.vuis.bfapi.data.MinecraftProfile;
+import dev.vuis.bfapi.util.EnvironmentConfigs;
 import dev.vuis.bfapi.util.Util;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
@@ -55,7 +56,8 @@ import org.jetbrains.annotations.Nullable;
 
 @Slf4j
 public class BfConnection extends Connection<BfPlayerData> {
-	private static final int MAX_CONNECT_ATTEMPTS = 5;
+	private static final int maxConnectionAttempts = EnvironmentConfigs.MAX_RECONNECT_ATTEMPTS;
+	private static final int reconnectDelaySeconds = EnvironmentConfigs.RECONNECT_DELAY_SECONDS;
 
 	private static final Random SECURE_RANDOM = new SecureRandom();
 
@@ -173,8 +175,20 @@ public class BfConnection extends Connection<BfPlayerData> {
 		sendPacket(new EncryptionReadyPacket());
 
 		log.info("cloud encryption established");
+		startTickLoop();
 	}
 
+	private void startTickLoop() {
+        if (channel == null) return;
+        
+        channel.eventLoop().scheduleAtFixedRate(() -> {
+            try {
+                onUpdateCore();
+            } catch (Exception e) {
+                log.error("Error in connection tick", e);
+            }
+        }, 0, 50, TimeUnit.MILLISECONDS);
+    }
 	@Override
 	public BfPlayerData getPlayerCloudData() {
 		throw new AssertionError();
@@ -183,7 +197,6 @@ public class BfConnection extends Connection<BfPlayerData> {
 	@Override
 	public void onConnectionStatusChanged(@NotNull ConnectionStatus status, @NotNull ConnectionStatusContext context) {
 		log.info("cloud connection status changed to {} (context {})", status, context);
-
 		switch (status) {
 			case CONNECTED_NOT_VERIFIED -> {
 				String serverId = randomServerId();
@@ -210,12 +223,11 @@ public class BfConnection extends Connection<BfPlayerData> {
 					);
 				}
 
-//				reconnectExecutor.schedule(
-//					() -> reconnect(true),
-//					30, TimeUnit.MINUTES
-//				);
 			}
-		}
+			case CLOSED -> {
+				reconnect(false);
+			}
+		};
 
 		for (Consumer<ConnectionStatus> statusListener : statusListeners) {
 			statusListener.accept(status);
@@ -229,24 +241,26 @@ public class BfConnection extends Connection<BfPlayerData> {
 	}
 
 	private void reconnect(boolean connectNow) {
-		disconnect("reconnecting", true);
-
-		if (connectAttempts < MAX_CONNECT_ATTEMPTS) {
-			if (connectNow) {
+		if (!isConnectionClosed()) {
+			disconnect("reconnecting", true);
+		}
+		if (connectAttempts >= maxConnectionAttempts) {
+			log.error("failed to connect to cloud {} times; stopping", maxConnectionAttempts);
+			return;
+		}
+		if (connectNow) {
 				log.info("reconnecting");
 
 				connect();
 			} else {
-				log.info("reconnecting in 60 seconds");
-
+				log.info("reconnecting in {} seconds",reconnectDelaySeconds);
 				reconnectExecutor.schedule(
 					this::connect,
-					60, TimeUnit.SECONDS
+					reconnectDelaySeconds,
+					TimeUnit.SECONDS
 				);
 			}
-		} else {
-			log.error("failed to connect to cloud {} times; stopping", MAX_CONNECT_ATTEMPTS);
-		}
+		
 	}
 
 	public void addStatusListener(Consumer<ConnectionStatus> statusListener) {
@@ -255,7 +269,7 @@ public class BfConnection extends Connection<BfPlayerData> {
 
 	@Override
 	protected void onUpdate() {
-		throw new AssertionError();
+		return;
 	}
 
 	@Override
@@ -281,6 +295,9 @@ public class BfConnection extends Connection<BfPlayerData> {
 		}
 
 		channel.close();
+		if (this.getStatus() != ConnectionStatus.CLOSED){
+			this.setStatus(ConnectionStatus.CLOSED, ConnectionStatusContext.CLIENT);
+		}
 		channel = null;
 	}
 

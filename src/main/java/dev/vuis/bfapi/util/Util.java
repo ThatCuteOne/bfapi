@@ -75,11 +75,17 @@ public final class Util {
 		return value;
 	}
 
-	public static String getEnvOrElse(@NotNull String name, @NotNull String defaultValue) {
+	public static <T> T getEnvOrElse(@NotNull String name, @NotNull T defaultValue, @NotNull Function<String, T> converter) {
 		String value = System.getenv(name);
-		return value != null ? value : defaultValue;
-	}
-
+		if (value == null) {
+			return defaultValue;
+		}
+		try {
+			return converter.apply(value);
+		} catch (Exception e) {
+			return defaultValue;
+		}
+}
 	public static String urlEncode(@NotNull String str) {
 		return URLEncoder.encode(str, StandardCharsets.UTF_8);
 	}

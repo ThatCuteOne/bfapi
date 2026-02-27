@@ -16,11 +16,9 @@ COPY --from=builder /workspace/build/install/* /opt/bfapi/
 
 ENV PORT=8080 \
     MS_CLIENT_ID=00000000402B5328 \
-    MS_REDIRECT_HOST=https://login.live.com/oauth20_desktop.srf \
     MS_PASTE_REDIRECT=true \
     BF_VERSION=0.8.0.2b \
     BF_VERSION_HASH=d937c0f7cf81ff6733487acda4bc4c06 \
-    BF_PLAYER_LIST_FILE=/opt/bfapi/players.txt\
     BF_HARDWARE_ID=2af8d79cef89c08d376f14ac1459d5a39b3be5577eeaa6219fcb901701a8d233 \
     BF_UCD_REFRESH_SECRET=meoiw
     

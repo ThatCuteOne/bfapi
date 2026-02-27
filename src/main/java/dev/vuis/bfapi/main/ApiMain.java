@@ -17,7 +17,7 @@ import dev.vuis.bfapi.cloud.unofficial.UnofficialCloudData;
 import dev.vuis.bfapi.data.MinecraftProfile;
 import dev.vuis.bfapi.http.BfApiChannelInitializer;
 import dev.vuis.bfapi.http.BfApiInboundHandler;
-import dev.vuis.bfapi.util.Util;
+import dev.vuis.bfapi.util.EnvironmentConfigs;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
@@ -28,7 +28,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -51,22 +50,6 @@ import org.jetbrains.annotations.Nullable;
 
 @Slf4j
 public final class ApiMain {
-	private static final InetSocketAddress BF_CLOUD_ADDRESS = new InetSocketAddress("cloud.blockfrontmc.com", 1924);
-
-	private static final int PORT = Integer.parseInt(Util.getEnvOrThrow("PORT"));
-	private static final String MS_CLIENT_ID = Util.getEnvOrThrow("MS_CLIENT_ID");
-	private static final String MS_CLIENT_SECRET_FILE = System.getenv("MS_CLIENT_SECRET_FILE");
-	private static final String MS_REDIRECT_HOST = Util.getEnvOrThrow("MS_REDIRECT_HOST");
-	private static final boolean MS_PASTE_REDIRECT = Boolean.parseBoolean(Util.getEnvOrThrow("MS_PASTE_REDIRECT"));
-	private static final String BF_VERSION = Util.getEnvOrThrow("BF_VERSION");
-	private static final String BF_VERSION_HASH = Util.getEnvOrThrow("BF_VERSION_HASH");
-	private static final byte[] BF_HARDWARE_ID = Util.parseHexArray(Util.getEnvOrThrow("BF_HARDWARE_ID"));
-	private static final String BF_PLAYER_LIST_FILE = Util.getEnvOrThrow("BF_PLAYER_LIST_FILE");
-	private static final String BF_UCD_REFRESH_SECRET = Util.getEnvOrThrow("BF_UCD_REFRESH_SECRET");
-	private static final boolean BF_UCD_WRITE_FILTERED_PLAYERS = Boolean.parseBoolean(Util.getEnvOrElse("BF_UCD_WRITE_FILTERED_PLAYERS", "false"));
-	private static final boolean BF_SCRAPE_FRIENDS = Boolean.parseBoolean(Util.getEnvOrElse("BF_SCRAPE_FRIENDS", "false"));
-	private static final int BF_SCRAPE_FRIENDS_DEPTH = Integer.parseInt(Util.getEnvOrElse("BF_SCRAPE_FRIENDS_DEPTH", "2"));
-
 	private static final ScheduledExecutorService refreshExecutor = Executors.newSingleThreadScheduledExecutor();
 	private static @Nullable ScheduledFuture<?> cloudDataRefreshFuture = null;
 	private static @Nullable CompletableFuture<Set<UUID>> friendScrapeFuture = null;
@@ -77,8 +60,8 @@ public final class ApiMain {
 	@SneakyThrows
 	static void main() {
 		String msClientSecret = null;
-		if (MS_CLIENT_SECRET_FILE != null) {
-			msClientSecret = Files.readString(Path.of(MS_CLIENT_SECRET_FILE));
+		if (EnvironmentConfigs.MS_CLIENT_SECRET_FILE != null) {
+			msClientSecret = Files.readString(Path.of(EnvironmentConfigs.MS_CLIENT_SECRET_FILE));
 		}
 		Set<UUID> ucdPlayers = loadUcdPlayers();
 		log.info("starting HTTP server");
@@ -86,25 +69,25 @@ public final class ApiMain {
 		CompletableFuture<String> msCodeFuture = null;
 		String msState = null;
 		MsCodeWrapper msCodeWrapper = null;
-		if (!MS_PASTE_REDIRECT) {
+		if (!EnvironmentConfigs.MS_PASTE_REDIRECT) {
 			msCodeFuture = new CompletableFuture<>();
 			msState = MicrosoftAuth.randomState();
 			msCodeWrapper = new MsCodeWrapper(msCodeFuture, msState);
 		}
 
-		BfApiInboundHandler inboundHandler = new BfApiInboundHandler(msCodeWrapper, BF_UCD_REFRESH_SECRET);
+		BfApiInboundHandler inboundHandler = new BfApiInboundHandler(msCodeWrapper, EnvironmentConfigs.BF_UCD_REFRESH_SECRET);
 		startHttpServer(inboundHandler);
 
 		MicrosoftAuth msAuth = new MicrosoftAuth(
-			MS_CLIENT_ID,
+			EnvironmentConfigs.MS_CLIENT_ID,
 			msClientSecret,
-			MS_REDIRECT_HOST + (MS_PASTE_REDIRECT ? "" : BfApiInboundHandler.AUTH_CALLBACK_PATH)
+			EnvironmentConfigs.MS_REDIRECT_HOST + (EnvironmentConfigs.MS_PASTE_REDIRECT ? "" : BfApiInboundHandler.AUTH_CALLBACK_PATH)
 		);
 
 		log.info("microsoft auth URL: {}", msAuth.getAuthUri(MicrosoftAuth.XBOX_LIVE_SCOPE, msState));
 
 		String msAuthorizationCode;
-		if (MS_PASTE_REDIRECT) {
+		if (EnvironmentConfigs.MS_PASTE_REDIRECT) {
 			log.info("paste redirected location:");
 			String redirectInput = IO.readln();
 			msAuthorizationCode = parseRedirectResult(redirectInput);
@@ -123,14 +106,14 @@ public final class ApiMain {
 		IO.readln();
 
 		BfCloudPacketHandlers.register();
-		if (BF_SCRAPE_FRIENDS) {
+		if (EnvironmentConfigs.BF_SCRAPE_FRIENDS) {
 			BfCloudPacketHandlers.registerPacketHandler(PacketRequestedFriends.class, ApiMain::handleFriendScrapePacket);
 		}
 
-		BfConnection connection = new BfConnection(BF_CLOUD_ADDRESS, mcAuth, mcProfile, BF_VERSION, BF_VERSION_HASH, BF_HARDWARE_ID);
+		BfConnection connection = new BfConnection(EnvironmentConfigs.BF_CLOUD_ADDRESS, mcAuth, mcProfile, EnvironmentConfigs.BF_VERSION, EnvironmentConfigs.BF_VERSION_HASH, EnvironmentConfigs.BF_HARDWARE_ID);
 		connection.connect();
 
-		UnofficialCloudData ucd = new UnofficialCloudData(ucdPlayers, connection.dataCache, BF_UCD_WRITE_FILTERED_PLAYERS);
+		UnofficialCloudData ucd = new UnofficialCloudData(ucdPlayers, connection.dataCache, EnvironmentConfigs.BF_UCD_WRITE_FILTERED_PLAYERS);
 
 		inboundHandler.connection = connection;
 		inboundHandler.ucd = ucd;
@@ -138,7 +121,7 @@ public final class ApiMain {
 		connection.addStatusListener(status -> {
 			switch (status) {
 				case CONNECTED_VERIFIED -> {
-					if (BF_SCRAPE_FRIENDS) {
+					if (EnvironmentConfigs.BF_SCRAPE_FRIENDS) {
 						new Thread(() -> friendScraperThread(connection, ucdPlayers), "friend scraper").start();
 					} else {
 						ucd.startRefresh();
@@ -158,14 +141,13 @@ public final class ApiMain {
 			}
 		});
 	}
-
 	private static void startHttpServer(BfApiInboundHandler inboundHandler) {
 		ServerBootstrap bootstrap = new ServerBootstrap()
 			.group(new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory()))
 			.channel(NioServerSocketChannel.class)
 			.childHandler(new BfApiChannelInitializer(inboundHandler));
 
-		bootstrap.bind(PORT).syncUninterruptibly();
+		bootstrap.bind(EnvironmentConfigs.HOST_PORT).syncUninterruptibly();
 	}
 
 	private static String parseRedirectResult(String uri) {
@@ -204,7 +186,7 @@ public final class ApiMain {
 		Set<UUID> scraped = new HashSet<>();
 		Set<UUID> front = startFront;
 
-		for (int depth = 1; depth <= BF_SCRAPE_FRIENDS_DEPTH; depth++) {
+		for (int depth = 1; depth <= EnvironmentConfigs.BF_SCRAPE_FRIENDS_DEPTH; depth++) {
 			int num = 0;
 			Set<UUID> nextFront = new HashSet<>();
 
@@ -265,11 +247,11 @@ public final class ApiMain {
 	}
 	private static Set<UUID> loadUcdPlayers() {
     try {
-        return Arrays.stream(Files.readString(Path.of(BF_PLAYER_LIST_FILE)).split("\n"))
+        return Arrays.stream(Files.readString(Path.of(EnvironmentConfigs.BF_PLAYER_LIST_FILE)).split("\n"))
             .map(UUID::fromString)
             .collect(Collectors.toSet());
     } catch (IOException e) {
-        System.err.println("Could not read file, using empty set: " + e.getMessage());
+        log.error("Could not read file, using empty set: " + e.getMessage());
         return new HashSet<>();
     }
 }
