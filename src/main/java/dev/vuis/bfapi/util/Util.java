@@ -13,11 +13,14 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -85,6 +88,14 @@ public final class Util {
 		} catch (Exception e) {
 			return defaultValue;
 		}
+}
+public static String buildFormUrlEncodedBody(@NotNull Map<String, String> parameters) {
+    return parameters.entrySet().stream()
+        .map(entry -> {
+            String value = entry.getValue() != null ? entry.getValue() : "";
+            return entry.getKey() + "=" + Util.urlEncode(value);
+        })
+        .collect(Collectors.joining("&"));
 }
 	public static String urlEncode(@NotNull String str) {
 		return URLEncoder.encode(str, StandardCharsets.UTF_8);

@@ -1,6 +1,9 @@
 package dev.vuis.bfapi.auth;
 
 import com.google.gson.JsonObject;
+
+import dev.vuis.bfapi.data.AuthToken;
+import dev.vuis.bfapi.util.PersistentDiskStorage;
 import dev.vuis.bfapi.util.Util;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.io.IOException;
@@ -11,6 +14,8 @@ import java.net.http.HttpResponse;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Random;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +28,7 @@ public class MicrosoftAuth {
 
 	private static final Random SECURE_RANDOM = new SecureRandom();
 	private static final Base64.Encoder BASE_64_ENCODER = Base64.getUrlEncoder().withoutPadding();
-
+	private PersistentDiskStorage persistentStorage = PersistentDiskStorage.getInstance();
 	private final HttpClient httpClient = HttpClient.newHttpClient();
 	private final Object refreshLock = new Object();
 
@@ -31,9 +36,11 @@ public class MicrosoftAuth {
 	private final String clientSecret;
 	private final String redirectUri;
 
-	private volatile String accessToken = null;
-	private volatile String refreshToken = null;
-	private volatile Instant expires = null;
+	private volatile AuthToken accessToken = null;
+
+	private volatile AuthToken refreshToken = new AuthToken(
+					PersistentDiskStorage.getInstance().getMSRefreshToken()
+				);
 
 	public String getAuthUri(@NotNull String scope, String state) {
 		return "https://login.live.com/oauth20_authorize.srf" +
@@ -44,17 +51,32 @@ public class MicrosoftAuth {
 			"&scope=" + Util.urlEncode(scope) +
 			(state == null ? "" : "&state=" + Util.urlEncode(state));
 	}
-
-	public void redeemCode(@NotNull String code, boolean isRefresh) throws IOException, InterruptedException {
+	public AuthToken redeemCode(@NotNull AuthToken code) throws IOException, InterruptedException {
+		return redeemCode(code, false);
+	}
+	public AuthToken redeemCode(@NotNull AuthToken code, boolean isRefresh ) throws IOException, InterruptedException {
 		log.info("redeeming microsoft authentication code");
 
 		String uri = "https://login.live.com/oauth20_token.srf";
-		String body = "client_id=" + Util.urlEncode(clientId) +
-			(clientSecret == null ? "" : "&client_secret=" + Util.urlEncode(clientSecret)) +
-			"&grant_type=" + (isRefresh ? "refresh_token" : "authorization_code") +
-			(isRefresh ? "&refresh_token=" : "&code=") + Util.urlEncode(code) +
-			(isRefresh ? "" : "&redirect_uri=" + Util.urlEncode(redirectUri));
 
+		Map<String, String> parameters = new LinkedHashMap<>();
+		parameters.put("client_id", clientId);
+		parameters.put("redirect_uri", redirectUri);
+		if (clientSecret != null) {
+        	parameters.put("client_secret", clientSecret);
+    	}
+
+		if (isRefresh) {
+			parameters.put("grant_type", "refresh_token");
+			parameters.put("refresh_token", code.getToken());
+			parameters.put("scope", XBOX_LIVE_SCOPE);
+    	} else {
+			parameters.put("grant_type", "authorization_code");
+			parameters.put("code", code.getToken());
+		}
+
+		String body = Util.buildFormUrlEncodedBody(parameters);
+		log.info(body);
 		HttpRequest request = HttpRequest.newBuilder()
 			.uri(URI.create(uri))
 			.header(HttpHeaderNames.CONTENT_TYPE.toString(), "application/x-www-form-urlencoded")
@@ -63,28 +85,36 @@ public class MicrosoftAuth {
 
 		HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 		if (!Util.isSuccess(response.statusCode())) {
-			throw new RuntimeException("code redeem failed:\n" + response.body());
+			throw new InterruptedException("code redeem failed:\n" + response.body());
 		}
-
 		JsonObject json = Util.COMPACT_GSON.fromJson(response.body(), JsonObject.class);
-		accessToken = json.get("access_token").getAsString();
-		refreshToken = json.get("refresh_token").getAsString();
-		expires = Instant.now().plusSeconds(Math.max(json.get("expires_in").getAsLong() - 10, 0));
 
-		log.info("redeemed microsoft authentication code successfully");
+		Instant expiresIn = Instant.now().plusSeconds(
+			Math.max(json.get("expires_in").getAsLong() - 10, 0)
+		);
+		log.info("Redeemed microsoft authentication code successfully");
+		String refreshTokenStr = refreshToken.getToken();
+		if (!isRefresh)
+			refreshTokenStr = json.get("refresh_token").getAsString();
+		String accessTokenStr = json.get("access_token").getAsString();
+
+		refreshToken = new AuthToken(refreshTokenStr);
+		persistentStorage.setRefreshToken(refreshToken.getToken());
+		accessToken = new AuthToken(accessTokenStr, expiresIn);
+		return accessToken;
 	}
 
-	public String tokenOrRefresh() throws IOException, InterruptedException {
-		if (refreshToken == null) {
-			throw new IllegalStateException("not authorized yet");
-		}
-		if (Instant.now().isAfter(expires)) {
+	public AuthToken getTokenOrRefresh() throws IOException, InterruptedException {
+		if ( accessToken == null || accessToken.isExpired() ) {
+			if (refreshToken == null)
+				throw new IllegalStateException("not authorized yet");
 			synchronized (refreshLock) {
 				log.info("refreshing expired microsoft access token");
-				redeemCode(refreshToken, true);
+				return redeemCode(refreshToken, true);
 			}
 		}
 		return accessToken;
+		
 	}
 
 	public static String randomState() {

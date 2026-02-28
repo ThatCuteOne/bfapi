@@ -5,6 +5,7 @@ import com.boehmod.bflib.cloud.packet.common.PacketClientRequest;
 import com.boehmod.bflib.cloud.packet.common.requests.PacketRequestedFriends;
 import com.google.common.graph.GraphBuilder;
 import com.google.common.graph.MutableGraph;
+
 import dev.vuis.bfapi.auth.MicrosoftAuth;
 import dev.vuis.bfapi.auth.MinecraftAuth;
 import dev.vuis.bfapi.auth.MsCodeWrapper;
@@ -14,10 +15,12 @@ import dev.vuis.bfapi.cloud.BfCloudData;
 import dev.vuis.bfapi.cloud.BfCloudPacketHandlers;
 import dev.vuis.bfapi.cloud.BfConnection;
 import dev.vuis.bfapi.cloud.unofficial.UnofficialCloudData;
+import dev.vuis.bfapi.data.AuthToken;
 import dev.vuis.bfapi.data.MinecraftProfile;
 import dev.vuis.bfapi.http.BfApiChannelInitializer;
 import dev.vuis.bfapi.http.BfApiInboundHandler;
 import dev.vuis.bfapi.util.EnvironmentConfigs;
+import dev.vuis.bfapi.util.PersistentDiskStorage;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
@@ -30,6 +33,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -53,58 +57,17 @@ public final class ApiMain {
 	private static final ScheduledExecutorService refreshExecutor = Executors.newSingleThreadScheduledExecutor();
 	private static @Nullable ScheduledFuture<?> cloudDataRefreshFuture = null;
 	private static @Nullable CompletableFuture<Set<UUID>> friendScrapeFuture = null;
-
-	private ApiMain() {
-	}
-
+	private static @Nullable BfApiInboundHandler BfAPIinboundHandler;
+	private static MinecraftAuth mcAuth;
+	private static MinecraftProfile mcProfile;
+	private static MicrosoftAuth msAuth;
+	private static CompletableFuture<String> msCodeFuture;
+	private static final String msState = MicrosoftAuth.randomState();
+	
 	@SneakyThrows
 	static void main() {
-		String msClientSecret = null;
-		if (EnvironmentConfigs.MS_CLIENT_SECRET_FILE != null) {
-			msClientSecret = Files.readString(Path.of(EnvironmentConfigs.MS_CLIENT_SECRET_FILE));
-		}
+		authenticate();
 		Set<UUID> ucdPlayers = loadUcdPlayers();
-		log.info("starting HTTP server");
-
-		CompletableFuture<String> msCodeFuture = null;
-		String msState = null;
-		MsCodeWrapper msCodeWrapper = null;
-		if (!EnvironmentConfigs.MS_PASTE_REDIRECT) {
-			msCodeFuture = new CompletableFuture<>();
-			msState = MicrosoftAuth.randomState();
-			msCodeWrapper = new MsCodeWrapper(msCodeFuture, msState);
-		}
-
-		BfApiInboundHandler inboundHandler = new BfApiInboundHandler(msCodeWrapper, EnvironmentConfigs.BF_UCD_REFRESH_SECRET);
-		startHttpServer(inboundHandler);
-
-		MicrosoftAuth msAuth = new MicrosoftAuth(
-			EnvironmentConfigs.MS_CLIENT_ID,
-			msClientSecret,
-			EnvironmentConfigs.MS_REDIRECT_HOST + (EnvironmentConfigs.MS_PASTE_REDIRECT ? "" : BfApiInboundHandler.AUTH_CALLBACK_PATH)
-		);
-
-		log.info("microsoft auth URL: {}", msAuth.getAuthUri(MicrosoftAuth.XBOX_LIVE_SCOPE, msState));
-
-		String msAuthorizationCode;
-		if (EnvironmentConfigs.MS_PASTE_REDIRECT) {
-			log.info("paste redirected location:");
-			String redirectInput = IO.readln();
-			msAuthorizationCode = parseRedirectResult(redirectInput);
-		} else {
-			msAuthorizationCode = msCodeFuture.get();
-		}
-		msAuth.redeemCode(msAuthorizationCode, false);
-
-		XblAuth xblAuth = new XblAuth(msAuth);
-		XstsAuth xstsAuth = new XstsAuth(xblAuth);
-		MinecraftAuth mcAuth = new MinecraftAuth(xstsAuth);
-		MinecraftProfile mcProfile = mcAuth.retrieveProfile();
-
-		log.info("authenticated as {} ({})", mcProfile.username(), mcProfile.uuid());
-		log.info("press enter to continue");
-		IO.readln();
-
 		BfCloudPacketHandlers.register();
 		if (EnvironmentConfigs.BF_SCRAPE_FRIENDS) {
 			BfCloudPacketHandlers.registerPacketHandler(PacketRequestedFriends.class, ApiMain::handleFriendScrapePacket);
@@ -115,8 +78,8 @@ public final class ApiMain {
 
 		UnofficialCloudData ucd = new UnofficialCloudData(ucdPlayers, connection.dataCache, EnvironmentConfigs.BF_UCD_WRITE_FILTERED_PLAYERS);
 
-		inboundHandler.connection = connection;
-		inboundHandler.ucd = ucd;
+		BfAPIinboundHandler.connection = connection;
+		BfAPIinboundHandler.ucd = ucd;
 
 		connection.addStatusListener(status -> {
 			switch (status) {
@@ -142,6 +105,7 @@ public final class ApiMain {
 		});
 	}
 	private static void startHttpServer(BfApiInboundHandler inboundHandler) {
+		BfAPIinboundHandler = inboundHandler;
 		ServerBootstrap bootstrap = new ServerBootstrap()
 			.group(new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory()))
 			.channel(NioServerSocketChannel.class)
@@ -255,4 +219,58 @@ public final class ApiMain {
         return new HashSet<>();
     }
 }
+private static AuthToken login() throws InterruptedException, ExecutionException {
+		AuthToken msAuthorizationCode;
+			if (EnvironmentConfigs.MS_PASTE_REDIRECT) {
+				log.info("microsoft auth URL: {}", msAuth.getAuthUri(MicrosoftAuth.XBOX_LIVE_SCOPE, msState));
+				// paste redirect link
+				log.info("paste redirected location:");
+				String redirectInput = IO.readln();
+				msAuthorizationCode = new AuthToken(parseRedirectResult(redirectInput)); 
+			} else{
+					log.info("microsoft auth URL: {}", msAuth.getAuthUri(MicrosoftAuth.XBOX_LIVE_SCOPE, msState));
+            		msAuthorizationCode = new AuthToken(msCodeFuture.get());
+				}
+		return msAuthorizationCode;
+	}
+
+
+	private static void authenticate() throws IOException , InterruptedException, ExecutionException {
+		String msClientSecret = null;
+		AuthToken msAuthorizationCode = null;
+		MsCodeWrapper msCodeWrapper = null;
+		if (EnvironmentConfigs.MS_CLIENT_SECRET_FILE != null) {
+		 	msClientSecret = Files.readString(Path.of(EnvironmentConfigs.MS_CLIENT_SECRET_FILE));
+		}
+
+		msAuth = new MicrosoftAuth(
+			EnvironmentConfigs.MS_CLIENT_ID,
+			msClientSecret,
+			EnvironmentConfigs.MS_REDIRECT_HOST + (EnvironmentConfigs.MS_PASTE_REDIRECT ? "" : BfApiInboundHandler.AUTH_CALLBACK_PATH)
+		);
+
+		if (!EnvironmentConfigs.MS_PASTE_REDIRECT) {
+			msCodeFuture = new CompletableFuture<>();
+			msCodeWrapper = new MsCodeWrapper(msCodeFuture, msState);
+		}
+
+		BfApiInboundHandler inboundHandler = new BfApiInboundHandler(msCodeWrapper, EnvironmentConfigs.BF_UCD_REFRESH_SECRET);
+		startHttpServer(inboundHandler);
+		if (PersistentDiskStorage.getInstance().getMSRefreshToken() == null){
+			msAuthorizationCode = login();
+			try{
+				msAuth.redeemCode(msAuthorizationCode);
+			} catch (InterruptedException e) {
+				log.info("An Error Accurred while trying to redeem current Acsses Token");
+				authenticate();
+				return;
+			}
+		}
+		
+		XblAuth xblAuth = new XblAuth(msAuth);
+		XstsAuth xstsAuth = new XstsAuth(xblAuth);
+		mcAuth = new MinecraftAuth(xstsAuth);
+		mcProfile = mcAuth.retrieveProfile();
+		log.info("authenticated as {} ({})", mcProfile.username(), mcProfile.uuid());
+	}
 }

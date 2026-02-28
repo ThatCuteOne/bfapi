@@ -2,7 +2,7 @@ services:
   bfapi:
     build: .
     volumes:
-      - ./players.txt:/opt/bfapi/players.txt:ro
+      - bfapi-data:/opt/bfapi/data
     ports:
       - "8080:8080"
     env_file:
@@ -15,3 +15,7 @@ services:
 
 networks:
   bfapi-network:
+
+volumes:
+  bfapi-data:
+    driver: local

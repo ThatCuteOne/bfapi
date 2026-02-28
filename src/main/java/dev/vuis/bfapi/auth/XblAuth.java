@@ -1,6 +1,8 @@
 package dev.vuis.bfapi.auth;
 
 import com.google.gson.JsonObject;
+
+import dev.vuis.bfapi.data.AuthToken;
 import dev.vuis.bfapi.util.Util;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.io.IOException;
@@ -28,13 +30,13 @@ public class XblAuth {
 	public void authenticate() throws IOException, InterruptedException {
 		log.info("authenticating xbox live");
 
-		String msToken = microsoftAuth.tokenOrRefresh();
+		AuthToken msToken = microsoftAuth.getTokenOrRefresh();
 
 		JsonObject bodyJson = Util.apply(new JsonObject(), root -> {
 			root.add("Properties", Util.apply(new JsonObject(), properties -> {
 				properties.addProperty("AuthMethod", "RPS");
 				properties.addProperty("SiteName", "user.auth.xboxlive.com");
-				properties.addProperty("RpsTicket", msToken);
+				properties.addProperty("RpsTicket", msToken.getToken());
 			}));
 			root.addProperty("RelyingParty", "http://auth.xboxlive.com");
 			root.addProperty("TokenType", "JWT");
