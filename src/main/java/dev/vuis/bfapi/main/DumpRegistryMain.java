@@ -40,8 +40,7 @@ public final class DumpRegistryMain {
 		root.add("achievements", Util.apply(new JsonObject(), achievements -> {
 			for (CloudAchievement achievement : registry.getAchievements()) {
 				achievements.add(Integer.toString(achievement.getId()), Util.apply(new JsonObject(), achievementRoot -> {
-					achievementRoot.addProperty("name", achievement.getName());
-					achievementRoot.addProperty("description", achievement.getDescription());
+					achievementRoot.addProperty("key", achievement.getTranslationKey());
 				}));
 			}
 		}));
