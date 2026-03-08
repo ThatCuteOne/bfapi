@@ -19,7 +19,6 @@ configurations {
     create("outerJar")
 }
 
-
 dependencies {
     "outerJar"("maven.modrinth:blockfront:${blockfrontModVersion}")
     compileOnly("org.jetbrains:annotations:26.0.2-1")
@@ -73,6 +72,7 @@ tasks.register<Copy>("extractInnerJar") {
     }
     outputs.dir(layout.buildDirectory.dir("extracted"))
 }
+
 tasks.compileJava {
     dependsOn("extractInnerJar")
 }
