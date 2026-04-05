@@ -13,8 +13,8 @@ public final class EnvironmentConfigs {
 	public static final String BF_UCD_REFRESH_SECRET = Util.getEnvOrThrow("BF_UCD_REFRESH_SECRET");
 
 	public static final String PERSISTENT_STORAGE_LOCATION = Util.getEnvOrElse("PERSISTENT_STORAGE_LOCATION", "persistent_data.json", Function.identity());
-	public static final String BF_VERSION = Util.getEnvOrElse("BF_VERSION", BuildInfo.getBlockfrontVersion(),String::new);
-	public static final String BF_VERSION_HASH = Util.getEnvOrElse("BF_VERSION_HASH",BuildInfo.getBlockfrontHash(),String::new);
+	public static final String BF_VERSION = Util.getEnvOrElse("BF_VERSION", BuildInfo.getBlockfrontVersion(),Function.identity());
+	public static final String BF_VERSION_HASH = Util.getEnvOrElse("BF_VERSION_HASH",BuildInfo.getBlockfrontHash(),Function.identity());
 	public static final String BF_PLAYER_LIST_FILE = Util.getEnvOrElse("BF_PLAYER_LIST_FILE","players.txt",Function.identity());
 	public static final boolean BF_UCD_WRITE_FILTERED_PLAYERS = Util.getEnvOrElse("BF_UCD_WRITE_FILTERED_PLAYERS", false,Boolean::parseBoolean);
 	public static final boolean BF_SCRAPE_FRIENDS = Util.getEnvOrElse("BF_SCRAPE_FRIENDS", false,Boolean::parseBoolean);

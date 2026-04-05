@@ -37,7 +37,8 @@ public class BuildInfo {
 
     private static void loadData() {
         Properties props = new Properties();
-        try (InputStream input = new FileInputStream("build.properties")) {
+        try (InputStream input = BuildInfo.class.getClassLoader().getResourceAsStream("version.properties")) {
+            System.out.println(input);
             // Load the properties file
             props.load(input);
 
