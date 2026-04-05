@@ -1,3 +1,7 @@
+import java.net.URI
+import java.util.Properties
+import java.time.Instant
+import groovy.json.JsonSlurper
 plugins {
     java
     application
@@ -22,9 +26,7 @@ configurations {
 dependencies {
     "outerJar"("maven.modrinth:blockfront:${blockfrontModVersion}")
     implementation(files("build/extracted/blockfront-library.jar"))
-
     compileOnly("org.jetbrains:annotations:26.0.2-1")
-
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("org.apache.logging.log4j:log4j-api:2.25.2")
     runtimeOnly("org.apache.logging.log4j:log4j-slf4j2-impl:2.25.2")
@@ -48,6 +50,31 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register("setVersionData") {
+    doLast {
+        val url = URI("http://cloud.blockfrontmc.com:8001/api/v2/?type=version").toURL()
+        val responseText = url.readText()
+        val jsonSlurper = JsonSlurper()
+        val jsonResponse = jsonSlurper.parseText(responseText) as Map<*, *>
+
+        val newestVersionHash = jsonResponse["hash"].toString()
+        val newestBlockfrontVersion = jsonResponse["version"].toString()
+
+        val versionPropsFile = file("src/main/resources/version.properties")
+        versionPropsFile.parentFile.mkdirs()
+        val props = Properties()
+        props.setProperty("blockfront.version", newestBlockfrontVersion)
+        props.setProperty("blockfront.version.hash", newestVersionHash)
+        props.setProperty("blockfront.compile.version", blockfrontModVersion)
+        props.setProperty("blockfront.compile.lib_version", blockfrontLibVersion)
+        props.setProperty("build.time",Instant.now().toString())
+        versionPropsFile.writer().use { writer ->
+            props.store(writer, "Build version information")
+        }
+
+    }
 }
 
 application {
@@ -78,6 +105,7 @@ tasks.register<Copy>("extractInnerJar") {
 
 tasks.compileJava {
     dependsOn("extractInnerJar")
+    dependsOn("setVersionData")
 }
 
 tasks.clean {
