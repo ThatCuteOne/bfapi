@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder;
 import dev.vuis.bfapi.cloud.BfPlayerData;
 import dev.vuis.bfapi.cloud.cache.BfDataCache;
 import dev.vuis.bfapi.util.cache.ExpiryHolder;
+import java.net.InetSocketAddress;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -169,6 +170,17 @@ public static String buildFormUrlEncodedBody(@NotNull Map<String, String> parame
 		}
 
 		return sb.toString();
+	}
+
+	public static @NotNull InetSocketAddress parseInetSocketAddress(@NotNull String str, int defaultPort) {
+		String[] parts = str.split(":");
+		if (parts.length == 1) {
+			return new InetSocketAddress(parts[0], defaultPort);
+		} else if (parts.length == 2) {
+			return new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
+		} else {
+			throw new IllegalArgumentException("Invalid InetSocketAddress");
+		}
 	}
 
 	public static @NotNull String getCachedPlayerName(@Nullable BfDataCache dataCache, @NotNull UUID uuid) {

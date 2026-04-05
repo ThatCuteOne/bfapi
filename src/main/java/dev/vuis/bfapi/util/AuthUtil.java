@@ -2,11 +2,6 @@ package dev.vuis.bfapi.util;
 
 import com.google.common.base.Suppliers;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
-import io.netty.handler.codec.http.HttpHeaderNames;
-
-import java.io.FileReader;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,7 +10,6 @@ import java.net.http.HttpResponse;
 import java.util.UUID;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
-import net.raphimc.minecraftauth.msa.model.MsaDeviceCode;
 
 @Slf4j
 public final class AuthUtil {
@@ -38,7 +32,7 @@ public final class AuthUtil {
 
 		HttpRequest request = HttpRequest.newBuilder()
 			.uri(MC_JOIN_SERVER_URI)
-			.header(HttpHeaderNames.CONTENT_TYPE.toString(), "application/json")
+			.header("Content-Type", "application/json")
 			.POST(HttpRequest.BodyPublishers.ofString(body))
 			.build();
 

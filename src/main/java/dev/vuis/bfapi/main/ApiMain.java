@@ -1,6 +1,7 @@
 package dev.vuis.bfapi.main;
 
 import com.boehmod.bflib.cloud.common.RequestType;
+import com.boehmod.bflib.cloud.connection.ConnectionStatus;
 import com.boehmod.bflib.cloud.packet.common.PacketClientRequest;
 import com.boehmod.bflib.cloud.packet.common.requests.PacketRequestedFriends;
 import com.google.common.graph.GraphBuilder;
@@ -13,6 +14,8 @@ import dev.vuis.bfapi.cloud.unofficial.UnofficialCloudData;
 import dev.vuis.bfapi.util.EnvironmentConfigs;
 import dev.vuis.bfapi.http.BfApiChannelInitializer;
 import dev.vuis.bfapi.http.BfApiInboundHandler;
+import dev.vuis.bfapi.util.FriendScraper;
+import dev.vuis.bfapi.util.Util;
 import dev.vuis.bfapi.util.PersistentDiskStorage;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
@@ -23,6 +26,9 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -42,6 +48,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import net.lenni0451.commons.httpclient.HttpClient;
 import net.raphimc.minecraftauth.MinecraftAuth;
 import net.raphimc.minecraftauth.java.JavaAuthManager;
 import net.raphimc.minecraftauth.java.model.MinecraftProfile;
@@ -80,10 +87,22 @@ public final class ApiMain {
 
 		UnofficialCloudData ucd = new UnofficialCloudData(ucdPlayers, connection.dataCache, EnvironmentConfigs.BF_UCD_WRITE_FILTERED_PLAYERS);
 
-		BfAPIinboundHandler.connection = connection;
-		BfAPIinboundHandler.ucd = ucd;
+		BfAPIinboundHandler.connectionReference.set(connection);
+		BfAPIinboundHandler.ucdReference.set(ucd);
 
-		connection.addStatusListener(status -> {
+		connection.addStatusListener(status -> onConnectionStatusChanged(connection, status, ucd, ucdPlayers));
+	}
+	private static void startHttpServer(BfApiInboundHandler inboundHandler) {
+		BfAPIinboundHandler = inboundHandler;
+		ServerBootstrap bootstrap = new ServerBootstrap()
+			.group(new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory()))
+			.channel(NioServerSocketChannel.class)
+			.childHandler(new BfApiChannelInitializer(inboundHandler));
+
+		bootstrap.bind(EnvironmentConfigs.HOST_PORT).syncUninterruptibly();
+	}
+
+	private static void onConnectionStatusChanged(BfConnection connection, ConnectionStatus status,UnofficialCloudData ucd,Set<UUID> ucdPlayers) {
 			switch (status) {
 				case CONNECTED_VERIFIED -> {
 					if (EnvironmentConfigs.BF_SCRAPE_FRIENDS) {
@@ -104,16 +123,8 @@ public final class ApiMain {
 					}
 				}
 			}
-		});
-	}
-	private static void startHttpServer(BfApiInboundHandler inboundHandler) {
-		BfAPIinboundHandler = inboundHandler;
-		ServerBootstrap bootstrap = new ServerBootstrap()
-			.group(new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory()))
-			.channel(NioServerSocketChannel.class)
-			.childHandler(new BfApiChannelInitializer(inboundHandler));
 
-		bootstrap.bind(EnvironmentConfigs.HOST_PORT).syncUninterruptibly();
+
 	}
 
 	private static void refreshCloudData(BfConnection connection) {
