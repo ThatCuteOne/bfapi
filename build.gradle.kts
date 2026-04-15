@@ -62,7 +62,7 @@ tasks.register("setVersionData") {
         val newestVersionHash = jsonResponse["hash"].toString()
         val newestBlockfrontVersion = jsonResponse["version"].toString()
 
-        val versionPropsFile = buildDir.resolve("generated/resources/main/version.properties")
+        val versionPropsFile = layout.buildDirectory.file("generated/resources/main/version.properties").get().asFile
         versionPropsFile.parentFile.mkdirs()
         val props = Properties()
         props.setProperty("blockfront.version", newestBlockfrontVersion)
@@ -80,7 +80,7 @@ tasks.register("setVersionData") {
 sourceSets {
     main {
         resources {
-            srcDir(buildDir.resolve("generated/resources/main"))
+            srcDir(layout.buildDirectory.file("generated/resources/main").get().asFile)
         }
     }
 }
