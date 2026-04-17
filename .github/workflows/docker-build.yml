@@ -11,6 +11,9 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Convert repository name to lowercase
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
       - uses: actions/checkout@v4
       - name: Build and push AMD64
         uses: docker/build-push-action@v5
@@ -18,7 +21,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}-amd64:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-amd64:latest
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -26,6 +29,9 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Convert repository name to lowercase
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
       - uses: actions/checkout@v4
       - name: Build and push ARM64
         uses: docker/build-push-action@v5
@@ -33,4 +39,4 @@ jobs:
           context: .
           push: true
           platforms: linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}-arm64:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-arm64:latest
