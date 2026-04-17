@@ -19,8 +19,6 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ env.REGISTRY }}/${{ github.repository }}-amd64:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -36,5 +34,3 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ env.REGISTRY }}/${{ github.repository }}-arm64:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
