@@ -3,6 +3,7 @@ package dev.vuis.bfapi.data;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.gson.JsonObject;
+import dev.vuis.bfapi.util.EnvironmentConfigs;
 import dev.vuis.bfapi.util.Util;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
@@ -46,7 +47,7 @@ public record MinecraftProfileData(
 
 		HttpRequest request = HttpRequest.newBuilder()
 			.uri(URI.create("https://api.mojang.com/minecraft/profile/lookup/name/" + lookupName))
-			.header("User-Agent", BfApiConfig.instance().getHttpUserAgent())
+			.header("User-Agent", EnvironmentConfigs.HTTP_USER_AGENT)
 			.GET()
 			.build();
 
