@@ -61,7 +61,7 @@ public class PersistentDiskStorage {
                 }
             }
         } catch (IOException e) {
-            log.warn("Couldn't load Persistent Storage {}", e);
+            log.warn("Couldn't load Persistent Storage : ", e);
         }
         return new PersistentDiskStorage();
     }

@@ -26,12 +26,30 @@ import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.Pair;
 import it.unimi.dsi.fastutil.objects.ObjectIntImmutablePair;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public final class BfCloudPacketHandlers {
+	private static final Map<Class<? extends IPacket>, List<PacketListener<?>>> packetListenerRegistry = new ConcurrentHashMap<>();
+
+	public static <P extends IPacket> void addListener(Class<P> packetClass, PacketListener<P> listener) {
+		packetListenerRegistry.computeIfAbsent(packetClass, k -> new CopyOnWriteArrayList<>())
+				.add(listener);
+	}
+	public static <P extends IPacket> void removeListener(Class<P> packetClass, PacketListener<P> listener) {
+		List<PacketListener<?>> listeners = packetListenerRegistry.get(packetClass);
+		if (listeners != null) {
+			listeners.remove(listener);
+		}
+	}
+
+
 	private BfCloudPacketHandlers() {
 	}
 
@@ -51,7 +69,25 @@ public final class BfCloudPacketHandlers {
 	}
 
 	public static <P extends IPacket> void registerPacketHandler(Class<P> packetClass, IPacketHandlerFunction<P, BfConnection> packetHandler) {
-		PacketRegistry.registerPacketHandler(packetClass, packetHandler, BfConnection.class);
+		PacketRegistry.registerPacketHandler(packetClass, (packet, connection) -> {
+			packetHandler.handle(packet,connection);
+			notifyListeners(packet,connection);
+		}, BfConnection.class);
+	}
+
+	private static <P extends IPacket> void notifyListeners(P packet, BfConnection connection) {
+		List<PacketListener<?>> listeners = packetListenerRegistry.get(packet.getClass());
+		if (listeners != null) {
+			@SuppressWarnings("unchecked")
+			List<PacketListener<P>> typedListeners = (List<PacketListener<P>>) (List<?>) listeners;
+			for (PacketListener<P> listener : typedListeners) {
+				try {
+					listener.onPacket(packet, connection);
+				} catch (Exception e) {
+					log.error("Error in packet listener for {}", packet.getClass().getSimpleName(), e);
+				}
+			}
+		}
 	}
 
 	private static void chatMessageFromCloud(PacketChatMessageFromCloud packet, BfConnection connection) {
@@ -66,14 +102,11 @@ public final class BfCloudPacketHandlers {
 		log.info("login streak: {}", packet.streak());
 		for (RewardType reward : packet.rewards()) {
 			switch (reward) {
-				case ExpRewardType expReward -> {
-					log.info("- exp reward: {}", expReward.getAmount());
-				}
+				case ExpRewardType expReward -> log.info("- exp reward: {}", expReward.getAmount());
 				case AbstractItemRewardType itemReward -> {
 					CloudItemStack stack = itemReward.getGrantedStack();
-					if (stack != null) {
-						log.info("- item reward: {}", itemReward.getGrantedStack().getDisplayName(connection.registry));
-					}
+					if (stack != null) log.info("- item reward: {}", itemReward.getGrantedStack().getDisplayName(connection.registry));
+
 				}
 				default -> {
 				}
@@ -148,5 +181,9 @@ public final class BfCloudPacketHandlers {
 		}
 
 		connection.dataCache.playerData.complete(uuid, playerData);
+	}
+	@FunctionalInterface
+	public interface PacketListener<P extends IPacket> {
+		void onPacket(P packet, BfConnection connection);
 	}
 }

@@ -86,7 +86,7 @@ public final class BfApiInboundHandler extends SimpleChannelInboundHandler<FullH
 			);
 		}
 
-		log.info("{} {} - {}", msg.method(), msg.uri(), response.status().code());
+		log.info("{} {} - {} {}", msg.method(), msg.uri(), response.status().code(),response.content().toString(StandardCharsets.UTF_8));
 
 		if (keepAlive) {
 			response.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);

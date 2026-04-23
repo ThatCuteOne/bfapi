@@ -72,6 +72,7 @@ public class BfConnection extends Connection<BfPlayerData> {
 	private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor();
 
 	private final Set<Consumer<ConnectionStatus>> statusListeners = new HashSet<>();
+	private final Set<Runnable> connectionFailureListeners = new HashSet<>(); // Add this
 
 	private final KeyPair clientKeyPair;
 
@@ -93,12 +94,12 @@ public class BfConnection extends Connection<BfPlayerData> {
 	private @Nullable Channel channel = null;
 	private int connectAttempts = 0;
 
-	public BfConnection(SocketAddress address, JavaAuthManager mcAuth, String version, String versionHash, byte[] hardwareId) {
+	public BfConnection(SocketAddress address, JavaAuthManager mcAuth, BfConnectionManager.BlockfrontVersionData versionData, byte[] hardwareId) {
 		super(30 * 20);
 		this.address = address;
 		this.mcAuth = mcAuth;
-		this.version = version;
-		this.versionHash = versionHash;
+		this.version = versionData.ID();
+		this.versionHash = versionData.HASH();
 		this.hardwareId = hardwareId;
 
 		CloudAchievements.registerAchievements(registry);
@@ -231,7 +232,7 @@ public class BfConnection extends Connection<BfPlayerData> {
 			case CLOSED -> {
 				reconnect(false);
 			}
-		};
+		}
 
 		for (Consumer<ConnectionStatus> statusListener : statusListeners) {
 			statusListener.accept(status);
@@ -248,8 +249,9 @@ public class BfConnection extends Connection<BfPlayerData> {
 		if (!isConnectionClosed()) {
 			disconnect("reconnecting", true);
 		}
-		if (connectAttempts >= maxConnectionAttempts) {
+		if (connectAttempts > maxConnectionAttempts) {
 			log.error("failed to connect to cloud {} times; stopping", maxConnectionAttempts);
+			connectionFailureListeners.forEach(Runnable::run);
 			return;
 		}
 		if (connectNow) {
@@ -270,11 +272,12 @@ public class BfConnection extends Connection<BfPlayerData> {
 	public void addStatusListener(Consumer<ConnectionStatus> statusListener) {
 		statusListeners.add(statusListener);
 	}
+	public void addConnectionFailureListener(Runnable listener) {
+		connectionFailureListeners.add(listener);
+	}
 
 	@Override
-	protected void onUpdate() {
-		return;
-	}
+	protected void onUpdate() {}
 
 	@Override
 	protected boolean shouldHandlePacket(@NotNull IPacket iPacket) {
@@ -307,7 +310,7 @@ public class BfConnection extends Connection<BfPlayerData> {
 
 	@Override
 	public @NotNull UUID getUUID() {
-		throw new AssertionError();
+		return mcAuth.getMinecraftProfile().getCached().getId();
 	}
 
 	@Override
@@ -317,17 +320,17 @@ public class BfConnection extends Connection<BfPlayerData> {
 
 	@Override
 	public @NotNull String getUsername() {
-		throw new AssertionError();
+		return mcAuth.getMinecraftProfile().getCached().getName();
 	}
 
 	@Override
 	public @NotNull String getVersion() {
-		throw new AssertionError();
+		return this.version;
 	}
 
 	@Override
 	public @NotNull String getVersionHash() {
-		throw new AssertionError();
+		return this.versionHash;
 	}
 
 	@Override

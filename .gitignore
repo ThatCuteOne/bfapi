@@ -43,3 +43,4 @@ bin/
 
 /registry.json
 /*.txt
+persistent_data.json
